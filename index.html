@@ -4254,7 +4254,7 @@ function csPlan(sm){
 }
 function csFields(sm, plan){
   const mhLines = sm.mh.map(l => ({label: l.label, cost: Math.max(0, Math.round(l.cost))}));
-  return {revenue: Math.max(0, Math.round(sm.net)), cor: Math.max(0, Math.round(sm.ext)), manhour: mhLines.reduce((t, l) => t + l.cost, 0), mhLines, assignments: plan.assignments};
+  return {revenue: Math.max(0, Math.round(sm.sales)), cor: Math.max(0, Math.round(sm.ext)), manhour: mhLines.reduce((t, l) => t + l.cost, 0), mhLines, assignments: plan.assignments};
 }
 function csCommitTeam(plan){ if(plan.fresh.length){ teamState.members = teamState.members.concat(plan.fresh); saveTeam(); } }
 function csEndDate(sm){
@@ -4320,7 +4320,7 @@ function csUpdateHint(){
   const plan = csPlan(sm), f = csFields(sm, plan);
   el.textContent = 'Angka project ini otomatis dari cost structure dan ikut berubah kalau cost structure diedit.';
   const row = (k, v) => `<div class="calc-line"><span>${k}</span><b>${v}</b></div>`;
-  box.innerHTML = `<div class="calc-box">${row('Revenue (net PPh)', fmtRp(f.revenue))}${row('Cost of revenue', fmtRp(f.cor))}${row('Manhour cost', fmtRp(f.manhour))}${sm.members.map(o => row(esc(o.name) + (csMatchMember(o.name) ? '' : ' (baru di Tim)'), fmtNum(o.hours, 0) + ' jam')).join('')}</div>`;
+  box.innerHTML = `<div class="calc-box">${row('Revenue (nominal quotation)', fmtRp(f.revenue))}${row('Cost of revenue', fmtRp(f.cor))}${row('Manhour cost', fmtRp(f.manhour))}${sm.members.map(o => row(esc(o.name) + (csMatchMember(o.name) ? '' : ' (baru di Tim)'), fmtNum(o.hours, 0) + ' jam')).join('')}</div>`;
 }
 document.getElementById('f_cs').onchange = csUpdateHint;
 // Semua project tertaut ikut cost structure terbaru (otomatis, admin saja)
