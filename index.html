@@ -4371,21 +4371,24 @@ function csUpdateHint(){
 document.getElementById('f_cs').onchange = csUpdateHint;
 // Semua project tertaut ikut cost structure terbaru (otomatis, admin saja)
 (() => { let t = 0; document.addEventListener('scroll', () => { document.body.classList.add('is-scrolling'); clearTimeout(t); t = setTimeout(() => document.body.classList.remove('is-scrolling'), 140); }, {capture:true, passive:true}); })();
-let csMissingSig = '';
+let csMissingSig = '', csResyncLog = [];
 function csResyncLinked(announce){
   const a = csApi(); if(!a) return;
   csMissing.clear();
   data.forEach(it => { if(it.csId && !a.summary(it.csId)) csMissing.add(it.id); });
   if(!isAdmin) return;
   let changed = 0;
+  const nowT = Date.now(); csResyncLog = csResyncLog.filter(t => nowT - t < 8000);
+  if(csResyncLog.length >= 4){ console.warn('csResyncLinked: terlalu sering mengubah data, dihentikan sementara'); return; }
   data.forEach(it => {
     if(!it.csId || it.isPaidMarketing) return;
     const sm = a.summary(it.csId); if(!sm) return;
     const plan = csPlan(sm), f = csFields(sm, plan);
-    if(JSON.stringify([it.revenue, it.cor, it.manhour, it.mhLines, it.assignments]) === JSON.stringify([f.revenue, f.cor, f.manhour, f.mhLines, f.assignments])) return;
+    const pick = o => csSig({revenue:Math.round(+o.revenue || 0), cor:Math.round(+o.cor || 0), manhour:Math.round(+o.manhour || 0), mhLines:(o.mhLines || []).map(l => ({label:l.label, cost:Math.round(+l.cost || 0)})), assignments:(o.assignments || []).map(a => ({memberId:a.memberId, hours:+a.hours || 0, unit:a.unit}))});
+    if(pick(it) === pick(f)) return;
     csCommitTeam(plan); Object.assign(it, f); changed++;
   });
-  if(changed){ save(data); }
+  if(changed){ csResyncLog.push(Date.now()); save(data); }
   const msig = [...csMissing].sort().join(',');
   const msigChanged = msig !== csMissingSig; csMissingSig = msig;
   if(changed || msigChanged) renderAll();
