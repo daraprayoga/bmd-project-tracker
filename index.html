@@ -4198,6 +4198,7 @@ document.getElementById('bauModalSave').onclick = () => {
 })();
 
 /* ---- v0.29 Cost structure: generator di-embed jadi tab Cost, tersambung ke board dan Tim ---- */
+let csDirtyAt = 0, csDeferT = 0;
 let csFrame = null, csWin = null, csReady = false, csPending = null, csLastCloud = null, csPushT = 0, csLastSig = '';
 function csApi(){ return csReady && csWin && csWin.CSAPI ? csWin.CSAPI : null; }
 function csLoad(){
@@ -4227,6 +4228,12 @@ function csPayload(){ const a = csApi(); if(!a) return undefined; try{ return cs
 function csApplyCloud(c){
   const a = csApi();
   if(!a){ csPending = c; return; }
+  // Echo snapshot dari push sendiri bisa lebih lama dari ketikan terbaru, jangan timpa input yang lagi diedit.
+  if(Date.now() - csDirtyAt < 5000){
+    clearTimeout(csDeferT);
+    csDeferT = setTimeout(() => { if(csLastCloud && Date.now() - csDirtyAt >= 5000 && JSON.stringify(csLastCloud) !== csLastSig) csApplyCloud(csLastCloud); }, 5200);
+    return;
+  }
   try{
     const cur = JSON.stringify(csStripUi(a.getState()));
     if(cur === JSON.stringify(c)) return;
@@ -4287,6 +4294,7 @@ function csToBoard(pid){
 }
 window.BMD_CS = {
   changed(){
+    csDirtyAt = Date.now();
     clearTimeout(csPushT);
     csPushT = setTimeout(() => {
       if(!isAdmin) return;
