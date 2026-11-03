@@ -1586,6 +1586,8 @@ function initFirebase(){
         if(val.marginTargets) setMarginTargets(val.marginTargets.min, val.marginTargets.healthy);
         if(val.team){ applyTeam(val.team); saveTeam(); }
         if(val.cost){ csLastCloud = val.cost; csApplyCloud(val.cost); }
+// data board dari cloud bisa basi: sinkron ulang angka project tertaut sebelum render, supaya nggak kedip balik ke angka lama
+        csResyncLinked(firstSnap);
         // val.bau may be undefined on data pushed by an older client — default to [] so a new
         // client doesn't choke on a field that doesn't exist yet.
         bauData = Array.isArray(val.bau) ? val.bau.map(migrateBauLine) : (bauData || []);
