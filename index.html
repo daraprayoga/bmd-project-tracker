@@ -1557,6 +1557,7 @@ const ADMIN_PIN = '7777';
 const APP_VERSION = '0.30';
 document.getElementById('appVersion').textContent = `BMD Project Tracker · v${APP_VERSION}`;
 let db = null, boardRef = null, cloudReady = false;
+const CLIENT_TAG = Math.random().toString(36).slice(2, 6);
 // Blocks every push until the first cloud snapshot has landed, so stale local data
 // (seed data, an old browser, a month-rollover reset) can never overwrite the cloud.
 let cloudSynced = false;
@@ -1593,7 +1594,11 @@ function initFirebase(){
         // data board dari cloud bisa basi: sinkron ulang angka project tertaut sebelum render, supaya nggak kedip balik ke angka lama
         const foreignWrite = !firstSnap && val.updatedAt && !csMyWrites.has(val.updatedAt);
         const nFix = csResyncLinked(firstSnap);
-        if(foreignWrite && nFix) toast('Ada tab atau perangkat lain yang menulis angka lama ke cloud. Tutup tab/perangkat lain yang masih buka tracker, lalu refresh.', 9000);
+        if(isAdmin && foreignWrite){
+          const wr = String(val.writer || '');
+          if(!wr.startsWith('v' + APP_VERSION + '-')) toast('Cloud barusan ditulis oleh ' + (wr ? 'versi ' + wr.split('-')[0] : 'tracker versi lama') + ' di tab atau perangkat lain. Itu yang bikin edit lo balik lagi. Tutup tab atau perangkat itu, lalu refresh pakai file terbaru.', 11000);
+          else if(nFix) toast('Ada tab atau perangkat lain yang menulis angka lama ke cloud. Tutup tab/perangkat lain yang masih buka tracker, lalu refresh.', 9000);
+        }
         // val.bau may be undefined on data pushed by an older client — default to [] so a new
         // client doesn't choke on a field that doesn't exist yet.
         bauData = Array.isArray(val.bau) ? val.bau.map(migrateBauLine) : (bauData || []);
@@ -1633,7 +1638,8 @@ function pushToCloud(){
       team: teamState,
       cost: csPayload() || csLastCloud || undefined,
       bau: (typeof bauData !== 'undefined' ? bauData : []),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      writer: 'v' + APP_VERSION + '-' + CLIENT_TAG
     }));
   }catch(e){ console.error(e); toast('Gagal menyiapkan data sync: ' + e.message, 7000); return; }
   try{ csMyWrites.add(payload.updatedAt); if(csMyWrites.size > 80) csMyWrites.delete(csMyWrites.values().next().value); }catch(e){}
