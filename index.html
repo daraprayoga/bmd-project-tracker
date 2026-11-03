@@ -1522,9 +1522,10 @@
   <div class="confirm" role="alertdialog" aria-modal="true">
     <h3>🔒 Login admin</h3>
     <p>Login pakai akun Google yang terdaftar sebagai admin. Perubahan yang lo buat di admin mode langsung ke-sync ke semua orang yang buka tracker ini.</p>
+    <div id="adminLoginMsg" role="status" style="font-size:12.5px;line-height:1.45;margin:12px 0 0;min-height:18px;"></div>
     <div class="confirm-actions">
       <button class="btn-secondary" id="adminCancel">Batal</button>
-      <button class="btn-primary" id="adminLoginBtn">Masuk dengan Google</button>
+      <button class="btn-primary" id="adminLoginBtn" onclick="googleLogin()">Masuk dengan Google</button>
     </div>
   </div>
 </div>
@@ -1590,18 +1591,31 @@ function initAuth(){
     });
   }catch(e){ console.warn('Firebase Auth gagal init', e); }
 }
+function loginMsg(t, bad){
+  const el = document.getElementById('adminLoginMsg'); if(!el) return;
+  el.textContent = t || ''; el.style.color = bad ? '#B3261E' : '';
+}
 function googleLogin(){
+  const btn = document.getElementById('adminLoginBtn');
+  if(location.protocol === 'file:'){ loginMsg('Login Google nggak jalan dari file yang dibuka langsung di komputer. Buka lewat alamat https tracker (Vercel).', true); return; }
   let auth;
-  try{ auth = firebase.auth(); }catch(e){ toast('Login butuh koneksi ke Firebase. Cek internet, lalu refresh.', 6000); return; }
+  try{ auth = firebase.auth(); }catch(e){ loginMsg('Firebase Auth belum ke-load. Refresh halaman, lalu cek koneksi atau ad-blocker.', true); return; }
   const prov = new firebase.auth.GoogleAuthProvider();
   prov.setCustomParameters({prompt: 'select_account'});
-  auth.signInWithPopup(prov).then(() => adminOverlay.classList.remove('show')).catch(e => {
+  if(btn) btn.disabled = true;
+  loginMsg('Membuka jendela login Google...');
+  auth.signInWithPopup(prov).then(() => { loginMsg(''); adminOverlay.classList.remove('show'); }).catch(e => {
     const c = e && e.code;
-    if(c === 'auth/popup-blocked' || c === 'auth/operation-not-supported-in-this-environment'){ auth.signInWithRedirect(prov); return; }
-    if(c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return;
-    if(c === 'auth/unauthorized-domain'){ toast('Domain ini belum didaftarkan di Firebase Authentication (Authorized domains).', 9000); return; }
-    toast('Login gagal: ' + (c || (e && e.message)), 7000);
-  });
+    if(c === 'auth/popup-blocked' || c === 'auth/operation-not-supported-in-this-environment'){ loginMsg('Popup diblokir browser, pindah ke halaman login Google...'); auth.signInWithRedirect(prov); return; }
+    if(c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request'){ loginMsg('Jendela login ditutup sebelum selesai. Klik lagi kalau mau lanjut.'); return; }
+    const MSG = {
+      'auth/unauthorized-domain': 'Domain ini belum didaftarkan di Firebase Authentication, bagian Authorized domains.',
+      'auth/operation-not-allowed': 'Provider Google belum diaktifkan di Firebase Authentication (Sign-in method).',
+      'auth/network-request-failed': 'Koneksi ke Google gagal. Cek internet, lalu coba lagi.',
+      'auth/internal-error': 'Firebase Auth error internal. Cek Authorized domains dan provider Google di console.'
+    };
+    loginMsg(MSG[c] || ('Login gagal: ' + (c || (e && e.message))), true);
+  }).finally(() => { if(btn) btn.disabled = false; });
 }
 
 function initFirebase(){
@@ -3160,14 +3174,13 @@ document.getElementById('adminToggleBtn').onclick = () => {
     try{ firebase.auth().signOut(); }catch(e){ isAdmin = false; authUser = null; applyAdminUI(); renderAll(); }
     toast('Logout. Sekarang mode lihat');
   }else{
+    loginMsg('');
     adminOverlay.classList.add('show');
     setTimeout(() => document.getElementById('adminLoginBtn').focus(), 50);
   }
 };
 document.getElementById('adminCancel').onclick = () => adminOverlay.classList.remove('show');
 adminOverlay.onclick = (e) => { if(e.target === adminOverlay) adminOverlay.classList.remove('show'); };
-document.getElementById('adminLoginBtn').onclick = googleLogin;
-
 /* ============================================================
    BAU PERFORMANCE TRACKER (v0.04)
    ============================================================
