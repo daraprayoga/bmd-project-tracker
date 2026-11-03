@@ -1590,8 +1590,10 @@ function initFirebase(){
         if(val.marginTargets) setMarginTargets(val.marginTargets.min, val.marginTargets.healthy);
         if(val.team){ applyTeam(val.team); saveTeam(); }
         if(val.cost){ csLastCloud = val.cost; csApplyCloud(val.cost); }
-// data board dari cloud bisa basi: sinkron ulang angka project tertaut sebelum render, supaya nggak kedip balik ke angka lama
-        csResyncLinked(firstSnap);
+        // data board dari cloud bisa basi: sinkron ulang angka project tertaut sebelum render, supaya nggak kedip balik ke angka lama
+        const foreignWrite = !firstSnap && val.updatedAt && !csMyWrites.has(val.updatedAt);
+        const nFix = csResyncLinked(firstSnap);
+        if(foreignWrite && nFix) toast('Ada tab atau perangkat lain yang menulis angka lama ke cloud. Tutup tab/perangkat lain yang masih buka tracker, lalu refresh.', 9000);
         // val.bau may be undefined on data pushed by an older client — default to [] so a new
         // client doesn't choke on a field that doesn't exist yet.
         bauData = Array.isArray(val.bau) ? val.bau.map(migrateBauLine) : (bauData || []);
@@ -1634,6 +1636,7 @@ function pushToCloud(){
       updatedAt: Date.now()
     }));
   }catch(e){ console.error(e); toast('Gagal menyiapkan data sync: ' + e.message, 7000); return; }
+  try{ csMyWrites.add(payload.updatedAt); if(csMyWrites.size > 80) csMyWrites.delete(csMyWrites.values().next().value); }catch(e){}
   pendingWrites++;
   const ok = () => { pendingWrites = Math.max(0, pendingWrites - 1); if(pendingWrites === 0){ syncErr = false; updateSyncHint(); } };
   const fail = (e) => {
@@ -4372,6 +4375,7 @@ document.getElementById('f_cs').onchange = csUpdateHint;
 // Semua project tertaut ikut cost structure terbaru (otomatis, admin saja)
 (() => { let t = 0; document.addEventListener('scroll', () => { document.body.classList.add('is-scrolling'); clearTimeout(t); t = setTimeout(() => document.body.classList.remove('is-scrolling'), 140); }, {capture:true, passive:true}); })();
 let csMissingSig = '', csResyncLog = [];
+const csMyWrites = new Set();
 function csResyncLinked(announce){
   const a = csApi(); if(!a) return;
   csMissing.clear();
@@ -4392,8 +4396,10 @@ function csResyncLinked(announce){
   const msig = [...csMissing].sort().join(',');
   const msigChanged = msig !== csMissingSig; csMissingSig = msig;
   if(changed || msigChanged) renderAll();
+  const retN = changed;
   if(announce && changed) toast(`${changed} project di board disinkron ke cost structure terbaru`, 4500);
   if(announce && csMissing.size) setTimeout(() => toast(`${csMissing.size} project tertaut ke cost structure yang nggak ketemu. Buka project-nya dan pilih ulang cost structure.`, 6000), changed ? 4700 : 0);
+  return retN;
 }
 function csLinkedFields(id){
   const a = csApi(); if(!id || isPaidMktg || !a) return {};
