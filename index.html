@@ -1187,7 +1187,7 @@
     </div>
     <div class="field">
       <label for="f_pic">PIC</label>
-      <input type="text" id="f_pic" placeholder="Nama PIC" list="picList">
+      <select id="f_pic"></select>
       <datalist id="picList"></datalist>
     </div>
 
@@ -2947,7 +2947,7 @@ function openModal(id){
   document.getElementById('f_name').value     = it ? it.name : '';
   document.getElementById('f_bu').value       = it ? it.bu : (filterBU || '');
   document.getElementById('f_service').value  = it ? it.service : '';
-  document.getElementById('f_pic').value      = it ? it.pic : '';
+  fillPicSelect(it ? it.pic : '');
   document.getElementById('f_target').value = it && it.target ? it.target : todayStr();
   applyStartedUI(it ? isStarted(it) : false);
   document.getElementById('f_progress').value = it ? it.progress : 0;
@@ -4356,6 +4356,21 @@ window.BMD_CS = {
   toBoard(pid){ csToBoard(pid); }
 };
 /* modal project: tautan ke cost structure */
+// PIC dipilih dari anggota Tim. Nilai lama yang belum ada di Tim tetap muncul supaya nggak hilang.
+function fillPicSelect(cur){
+  const sel = document.getElementById('f_pic');
+  cur = (cur && cur !== '-') ? String(cur) : '';
+  const names = (teamState.members || []).map(m => m.name).filter(Boolean);
+  let val = '';
+  if(cur){
+    val = names.find(n => n === cur) || '';
+    if(!val){ const m = csMatchMember(cur); if(m) val = m.name; }
+  }
+  let html = '<option value="">Belum ada PIC</option>' + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if(cur && !val){ html += `<option value="${esc(cur)}">${esc(cur)} (belum ada di Tim)</option>`; val = cur; }
+  sel.innerHTML = html;
+  sel.value = val;
+}
 function csFillSelect(sel, cur){
   const a = csApi(), list = a ? a.list() : [];
   sel.innerHTML = '<option value="">Tidak ditautkan</option>' + list.map(o => `<option value="${esc(o.id)}">${esc(o.label)}${o.code ? ' · ' + esc(o.code) : ''}</option>`).join('');
