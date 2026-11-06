@@ -936,8 +936,9 @@
   details.side-fold{margin:0;}
   details.side-fold > summary.side-label{cursor:pointer;list-style:none;user-select:none;}
   details.side-fold > summary::-webkit-details-marker{display:none;}
-  details.side-fold > summary::after{content:'';margin-left:auto;width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s;}
-  details.side-fold[open] > summary::after{transform:rotate(45deg);}
+  details.side-fold > summary::after{content:'';margin-left:auto;width:7px;height:7px;margin-top:-3px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);transition:transform .22s cubic-bezier(.22,1,.36,1);}
+  details.side-fold[open] > summary::after{transform:rotate(225deg);margin-top:3px;}
+  details.side-fold.closing > summary::after{transform:rotate(45deg);margin-top:-3px;}
   /* admin login: quiet when not admin */
   :root body:not(.is-admin) .admin-login-btn{background:transparent;color:var(--ink-soft);border:1px solid var(--border);font-weight:600;}
   :root body:not(.is-admin) .admin-login-btn:hover{background:var(--col-bg);color:var(--ink);}
@@ -4614,6 +4615,23 @@ renderAll();
     return r;
   };
 
+
+  /* lipat/buka sidebar: animasi tinggi */
+  document.querySelectorAll('details.side-fold').forEach(d => {
+    const sum = d.querySelector('summary'); let busy = false;
+    sum.addEventListener('click', (e) => {
+      e.preventDefault();
+      if(busy) return;
+      if(matchMedia('(prefers-reduced-motion: reduce)').matches){ d.open = !d.open; return; }
+      const opts = {duration:240, easing:'cubic-bezier(.22,1,.36,1)'};
+      const start = d.offsetHeight; busy = true; d.style.overflow = 'hidden';
+      let end;
+      if(d.open){ end = sum.offsetHeight; d.classList.add('closing'); }
+      else { d.open = true; end = d.offsetHeight; }
+      const an = d.animate({height:[start + 'px', end + 'px']}, opts);
+      an.onfinish = () => { if(end === sum.offsetHeight && d.classList.contains('closing')) d.open = false; d.classList.remove('closing'); d.style.overflow = ''; busy = false; };
+    });
+  });
   /* task map: geser urutan tanpa drag (sentuh + keyboard) */
   const tbl = document.getElementById('tasksTable');
   if(tbl) tbl.addEventListener('click', (e) => {
