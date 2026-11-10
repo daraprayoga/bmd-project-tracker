@@ -417,7 +417,7 @@
   .cd-list{flex:1;min-height:0;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
   .cd-empty{font-size:12.5px;color:var(--ink-faint);text-align:center;padding:30px 10px;}
   .cm{background:var(--col-bg);border:1px solid var(--border-soft);border-radius:12px;padding:10px 12px;}
-  .cm.unread{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent);}
+  .cm.unread .cm-top b::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px;}
   .cm.done{opacity:.55;}
   .cm-top{display:flex;align-items:center;gap:7px;font-size:12.5px;}
   .cm-top b{color:var(--ink);}
@@ -1711,7 +1711,7 @@ const CMT_PATH = 'dmd-tracker/comments';
 const CFG_PIN_PATH = 'dmd-tracker/config/reviewPin';
 // Bump this (and the delivered filename) every time a new revision goes out,
 // so it's always clear which version is live on a given browser/device.
-const APP_VERSION = '0.42';
+const APP_VERSION = '0.43';
 document.getElementById('appVersion').textContent = `BMD Project Tracker · v${APP_VERSION}`;
 let db = null, boardRef = null, cloudReady = false;
 const CLIENT_TAG = Math.random().toString(36).slice(2, 6);
