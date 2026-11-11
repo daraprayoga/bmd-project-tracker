@@ -1400,7 +1400,14 @@
       <div class="field-hint" id="qtyProgressHint" style="margin-top:10px;font-weight:700;">Progress keseluruhan: 0%</div>
     </div>
 
-    <div class="section-label">Financial</div>
+    <div class="section-label">Financial <span style="text-transform:none;font-weight:500;color:var(--ink-faint);">(read-only, edit lewat Cost structure)</span></div>
+    <div class="field" id="csLinkWrap">
+      <label for="f_cs">Cost structure <span style="font-weight:500;color:var(--ink-faint);">(opsional)</span></label>
+      <div class="cs-link-row"><select id="f_cs"><option value="">Tidak ditautkan</option></select></div>
+      <div class="field-hint" id="csHint"></div>
+    </div>
+    <div id="finRO"></div>
+    <div id="finLegacy" style="display:none;" aria-hidden="true">
     <label class="paidmktg-toggle">
       <input type="checkbox" id="f_paid_mktg">
       <span>Paid Marketing project <span style="font-weight:500;color:var(--ink-faint);text-transform:none;">(revenue dihitung dari cost of revenue + service fee)</span></span>
@@ -1423,11 +1430,6 @@
       </div>
     </div>
 
-    <div class="field" id="csLinkWrap">
-      <label for="f_cs">Cost structure <span style="font-weight:500;color:var(--ink-faint);">(opsional)</span></label>
-      <div class="cs-link-row"><select id="f_cs"><option value="">Tidak ditautkan</option></select></div>
-      <div class="field-hint" id="csHint"></div>
-    </div>
     <div id="csLinkedBox" style="display:none;"></div>
     <div id="csManualWrap">
     <div class="field-row" id="manualRevCorWrap">
@@ -1474,6 +1476,8 @@
       <div class="calc-line"><span>Total cost</span><b id="cCost">Rp 0</b></div>
       <div class="calc-line total"><span>Net profit</span><b id="cNet">Rp 0</b></div>
       <div class="calc-line"><span>Net margin</span><b id="cPct">0%</b></div>
+    </div>
+
     </div>
 
     <div class="section-label">Performance metrics <span style="text-transform:none;font-weight:500;color:var(--ink-faint);">(optional, add as many as needed)</span></div>
@@ -1779,7 +1783,7 @@ const CMT_PATH = 'dmd-tracker/comments';
 const CFG_PIN_PATH = 'dmd-tracker/config/reviewPin';
 // Bump this (and the delivered filename) every time a new revision goes out,
 // so it's always clear which version is live on a given browser/device.
-const APP_VERSION = '0.52';
+const APP_VERSION = '0.53';
 document.getElementById('appVersion').textContent = `BMD Project Tracker · v${APP_VERSION}`;
 let db = null, boardRef = null, cloudReady = false;
 const CLIENT_TAG = Math.random().toString(36).slice(2, 6);
@@ -3239,6 +3243,7 @@ function openModal(id){
   updateCalc();
   if(!csFrame) csLoad();
   csFillSelect(document.getElementById('f_cs'), it ? it.csId : ''); csUpdateHint();
+  renderFinRO();
   overlay.classList.add('show');
   setTimeout(() => document.getElementById('f_name').focus(), 50);
 }
@@ -5041,7 +5046,8 @@ function csFillSelect(sel, cur){
   if(cur && !list.some(o => o.id === cur)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(cur)}">(cost structure nggak ketemu)</option>`);
   sel.value = cur || '';
 }
-function csUpdateHint(){
+function csUpdateHint(){ csUpdateHint0(); renderFinRO(); }
+function csUpdateHint0(){
   const el = document.getElementById('csHint'), id = document.getElementById('f_cs').value, a = csApi();
   const man = document.getElementById('csManualWrap'), box = document.getElementById('csLinkedBox');
   const linked = !!id && !isPaidMktg;
@@ -5058,6 +5064,31 @@ function csUpdateHint(){
   box.innerHTML = `<div class="calc-box">${row('Revenue (nominal quotation)', fmtRp(f.revenue))}${row('Cost of revenue', fmtRp(f.cor))}${row('Manhour cost', fmtRp(f.manhour))}${sm.members.map(o => row(esc(o.name) + (csMatchMember(o.name) ? '' : ' (baru di Tim)'), fmtNum(o.hours, 0) + ' jam')).join('')}</div>`;
 }
 document.getElementById('f_cs').onchange = csUpdateHint;
+/* ---------- v0.53 ringkasan finansial read-only di modal project ---------- */
+function renderFinRO(){
+  const box = document.getElementById('finRO'); if(!box) return;
+  const id = document.getElementById('f_cs').value, a = csApi();
+  let rev = 0, cor = 0, mh = 0, hrs = 0, src = 'manual';
+  const sm = (id && a && !isPaidMktg) ? a.summary(id) : null;
+  if(sm){
+    const f = csFields(sm, csPlan(sm));
+    rev = f.revenue; cor = f.cor; mh = f.manhour; hrs = sm.members.reduce((t, o) => t + (+o.hours || 0), 0); src = 'cs';
+  }else{
+    const r = updateCalc(); rev = r.rev; cor = r.cor; mh = Math.max(0, +document.getElementById('f_manhour').value || 0);
+    hrs = collectAssignments().reduce((t, x) => t + (+x.hours || 0), 0);
+  }
+  const cost = cor + mh, net = rev - cost, pct = rev ? net / rev * 100 : 0;
+  const row = (k, v, st) => `<div class="calc-line"><span>${k}</span><b${st ? ` style="${st}"` : ''}>${v}</b></div>`;
+  const pcol = pct < MARGIN_MIN ? 'var(--danger-text)' : pct < MARGIN_HEALTHY ? 'var(--warn-text)' : 'var(--ok-text)';
+  const empty = !rev && !cost && !hrs;
+  box.innerHTML = empty
+    ? '<div class="field-hint">Belum ada angka. Tautkan cost structure di atas supaya revenue, cost, dan jam tim muncul otomatis.</div>'
+    : `<div class="calc-box">${row('Revenue', fmtRp(rev))}${row('Total cost', fmtRp(cost))}${row('Net profit', fmtRp(net))}${row('Net margin', pct.toFixed(1) + '%', 'color:' + pcol)}${hrs ? row('Jam tim', fmtNum(hrs, 0) + ' jam') : ''}</div>`
+      + (src === 'cs' ? `<button type="button" class="btn-secondary" id="finOpenCs" style="margin-top:10px;">Buka di Cost structure</button>` : '<div class="field-hint">Angka ini dari input lama dan nggak bisa diubah di sini. Buat ubah, tautkan ke cost structure.</div>');
+  const bt = document.getElementById('finOpenCs');
+  if(bt) bt.onclick = () => { closeModal(); switchView('cost'); setTimeout(() => { try{ const x = csApi(); if(x && x.openProject) x.openProject(id); }catch(e){} }, 400); };
+}
+
 // Semua project tertaut ikut cost structure terbaru (otomatis, admin saja)
 (() => { let t = 0; document.addEventListener('scroll', () => { document.body.classList.add('is-scrolling'); clearTimeout(t); t = setTimeout(() => document.body.classList.remove('is-scrolling'), 140); }, {capture:true, passive:true}); })();
 let csMissingSig = '', csResyncLog = [];
