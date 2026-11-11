@@ -378,6 +378,8 @@
   .dv-note b{color:var(--ink-faint);font-weight:700;}
   .dv-empty,.dv-more{font-size:11.5px;color:var(--ink-faint);margin-top:6px;}
   body.compact .dv{display:none;}
+  .bau-row-actions.stub .danger{display:none;}
+  .bau-empty{color:var(--ink-faint);font-style:italic;}
   .bau-projtag{font-size:11px;color:var(--accent-text);margin-top:2px;font-weight:600;}
   .bau-projclr{border:0;background:none;color:var(--accent-text);font:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;}
   .field textarea{width:100%;background:var(--col-bg);border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-family:'Inter';font-size:13px;color:var(--ink);resize:vertical;min-height:64px;line-height:1.45;}
@@ -1647,7 +1649,7 @@
     <div class="field">
       <label for="bau_f_proj">Project terkait (opsional)</label>
       <select id="bau_f_proj"></select>
-      <div class="field-hint">Kalau dipilih, target dan deliverable baris ini tampil di card project di board.</div>
+      <div class="field-hint">Target diambil dari project yang sudah mulai. BU, brand, dan scope ikut project.</div>
     </div>
     <div class="field">
       <label for="bau_f_metric">Metric</label>
@@ -1783,7 +1785,7 @@ const CMT_PATH = 'dmd-tracker/comments';
 const CFG_PIN_PATH = 'dmd-tracker/config/reviewPin';
 // Bump this (and the delivered filename) every time a new revision goes out,
 // so it's always clear which version is live on a given browser/device.
-const APP_VERSION = '0.54';
+const APP_VERSION = '0.55';
 document.getElementById('appVersion').textContent = `BMD Project Tracker · v${APP_VERSION}`;
 let db = null, boardRef = null, cloudReady = false;
 const CLIENT_TAG = Math.random().toString(36).slice(2, 6);
@@ -4141,6 +4143,26 @@ function applyBauFilters(list){
     return true;
   });
 }
+
+/* ---------- v0.55 menu Target diambil dari card project yang sudah mulai ---------- */
+let bauShowLegacy = false;
+function bauView(){
+  const started = data.filter(isStarted), sids = new Set(started.map(d => d.id));
+  bauData.forEach(l => { const p = l.projId ? data.find(d => d.id === l.projId) : null; if(p){ l.businessUnit = p.bu || '-'; l.brand = p.name; l.scopeOfWork = p.service || ''; } });
+  const live = bauData.filter(l => l.projId && sids.has(l.projId));
+  const legacy = bauData.filter(l => !(l.projId && sids.has(l.projId)));
+  const stubs = started.filter(p => !bauData.some(l => l.projId === p.id)).map(p => Object.assign(
+    migrateBauLine({id:'stub_' + p.id, businessUnit:p.bu || '-', brand:p.name, scopeOfWork:p.service || '', metric:'', projId:p.id}), {stub:true}));
+  return {rows: live.concat(stubs, bauShowLegacy ? legacy : []), legacyCount: legacy.length};
+}
+function bauApplyProjLock(){
+  const sel = document.getElementById('bau_f_proj'), p = data.find(d => d.id === sel.value);
+  const f = ['bau_f_bu', 'bau_f_brand', 'bau_f_scope'].map(i => document.getElementById(i));
+  if(p){ f[0].value = p.bu || '-'; f[1].value = p.name; f[2].value = p.service || ''; }
+  f.forEach(el => { el.disabled = !!p; });
+}
+document.getElementById('bau_f_proj').addEventListener('change', bauApplyProjLock);
+
 function renderBauFilters(){
   const monthDefs = [{k:'all', t:'Semua bulan'}].concat(MONTH_KEYS.map(mk => ({k:mk, t:MONTH_LABEL_ID[mk]})));
   const mf = document.getElementById('bauMonthFilter');
@@ -4148,7 +4170,7 @@ function renderBauFilters(){
   mf.querySelectorAll('[data-month]').forEach(el => { el.onclick = () => { bauFilterMonth = el.dataset.month; renderBauAll(); }; });
 
   const buCount = {}, brandCount = {}, scopeCount = {}, metricCount = {};
-  bauData.forEach(l => {
+  bauView().rows.forEach(l => {
     if(l.businessUnit) buCount[l.businessUnit] = (buCount[l.businessUnit] || 0) + 1;
     if(l.brand) brandCount[l.brand] = (brandCount[l.brand] || 0) + 1;
     if(l.scopeOfWork) scopeCount[l.scopeOfWork] = (scopeCount[l.scopeOfWork] || 0) + 1;
@@ -4188,7 +4210,7 @@ document.getElementById('bauClearAch').onclick = () => { bauFilterAch = null; re
 document.getElementById('bauSearchInput').oninput = (e) => { bauSearchTerm = e.target.value; renderBauStatBar(); renderBauTable(); };
 
 function renderBauStatBar(){
-  const v = applyBauFilters(bauData);
+  const v = applyBauFilters(bauView().rows);
   let achieve = 0, under = 0, pctSum = 0, pctCount = 0;
   v.forEach(l => {
     const ach = bauLineAchievement(l);
@@ -4215,7 +4237,10 @@ function renderBauStatBar(){
   const pj = bauFilterProj ? data.find(d => d.id === bauFilterProj) : null;
   document.getElementById('bauTopSub').innerHTML =
     (pj ? `<b>Project: ${esc(pj.name)}</b> <button type="button" class="bau-projclr" id="bauProjClr">Lihat semua</button> · ` : '') +
-    esc((parts.length ? parts.join(' · ') + ' — ' : '') + `${v.length} dari ${bauData.length} baris · ${bauFilterMonth === 'all' ? 'Semua bulan' : MONTH_LABEL_ID[bauFilterMonth]}`);
+    esc((parts.length ? parts.join(' · ') + ' — ' : '') + `${v.length} dari ${bauView().rows.length} baris · ${bauFilterMonth === 'all' ? 'Semua bulan' : MONTH_LABEL_ID[bauFilterMonth]}`)
+    + (bauView().legacyCount ? ` · <button type="button" class="bau-projclr" id="bauLegacyBtn">${bauShowLegacy ? 'Sembunyikan' : 'Tampilkan'} ${bauView().legacyCount} baris lama</button>` : '');
+  const lb = document.getElementById('bauLegacyBtn');
+  if(lb) lb.onclick = () => { bauShowLegacy = !bauShowLegacy; renderBauAll(); };
   const pc = document.getElementById('bauProjClr');
   if(pc) pc.onclick = () => { bauFilterProj = null; renderBauAll(); };
 }
@@ -4236,17 +4261,14 @@ function bauAchPill(ach){
 }
 function renderBauTable(){
   const tbl = document.getElementById('bauTable');
-  if(!bauData.length){
+  if(!bauView().rows.length){
     tbl.innerHTML = `<tbody><tr><td style="padding:60px 20px;text-align:center;">
-      <h3 style="font-size:15.5px;margin:0 0 7px;font-weight:700;">Belum ada data BAU</h3>
-      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 18px;">${isAdmin ? 'Import CSV tracker BAU, atau tambah baris manual.' : 'Menunggu admin mengisi data BAU Performance.'}</p>
-      ${isAdmin ? '<button class="btn-new" style="margin:0 auto;" id="bauEmptyAdd">Tambah baris</button>' : ''}
+      <h3 style="font-size:15.5px;margin:0 0 7px;font-weight:700;">Belum ada project yang sudah mulai</h3>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 18px;">Target muncul otomatis dari project yang sudah mulai di Board.</p>
     </td></tr></tbody>`;
-    const btn = document.getElementById('bauEmptyAdd');
-    if(btn) btn.onclick = () => openBauModal(null);
     return;
   }
-  const filtered = applyBauFilters(bauData).sort((a,b) => (a.businessUnit+a.brand+a.scopeOfWork+a.metric).localeCompare(b.businessUnit+b.brand+b.scopeOfWork+b.metric));
+  const filtered = applyBauFilters(bauView().rows).sort((a,b) => (a.businessUnit+a.brand+a.scopeOfWork+a.metric).localeCompare(b.businessUnit+b.brand+b.scopeOfWork+b.metric));
   if(!filtered.length){
     tbl.innerHTML = `<tbody><tr><td style="padding:60px 20px;text-align:center;">
       <h3 style="font-size:15.5px;margin:0 0 7px;font-weight:700;">Tidak ada hasil</h3>
@@ -4267,15 +4289,14 @@ function renderBauTable(){
     : `<tr><th>Business Unit</th><th>Brand</th><th>Scope of Work</th><th>Detail Activity</th><th>Metric</th><th>Rata-rata YTD</th><th>Status</th><th>Jan&ndash;Des</th>${isAdmin ? '<th></th>' : ''}</tr>`;
   const colspan = showMonth ? (isAdmin ? 11 : 10) : (isAdmin ? 9 : 8);
 
-  const actionsCell = (id) => isAdmin ? `<td class="bau-row-actions">
+  const actionsCell = (id, stub) => isAdmin ? `<td class="bau-row-actions${stub ? ' stub' : ''}">
       <button class="bau-icon-btn" data-bau-edit="${id}" title="Edit"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></button>
       <button class="bau-icon-btn danger" data-bau-del="${id}" title="Hapus"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg></button>
     </td>` : '';
 
   const bodyRows = filtered.map(line => {
     const ytd = bauYtdAvg(line);
-    const pjn = line.projId ? (data.find(d => d.id === line.projId) || {}).name : '';
-    const idCells = `<td>${esc(line.businessUnit)}${pjn ? `<div class="bau-projtag" title="Tertaut ke project di board">${esc(pjn)}</div>` : ''}</td><td>${esc(line.brand)}</td><td>${esc(line.scopeOfWork)}</td><td>${esc(line.detailActivity)}</td><td>${esc(line.metric)}</td>`;
+    const idCells = `<td>${esc(line.businessUnit)}</td><td>${esc(line.brand)}</td><td>${esc(line.scopeOfWork)}</td><td>${esc(line.detailActivity)}</td><td>${line.stub ? '<span class="bau-empty">Belum ada target</span>' : esc(line.metric)}</td>`;
     if(showMonth){
       const m = line.months[bauFilterMonth];
       const pct = computeMonthPct(line, bauFilterMonth);
@@ -4286,7 +4307,7 @@ function renderBauTable(){
         <td class="bau-num">${fmtBauNum(m.target)}</td><td class="bau-num">${fmtBauNum(m.actual)}</td><td class="bau-num">${fmtPct(pct)}</td><td class="bau-num">${fmtPct(ytd)}</td>
         <td>${bauAchPill(ach)}</td>
         <td><button class="bau-expand-btn ${expanded ? 'open' : ''}" data-bau-expand="${line.id}" title="Detail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></td>
-        ${actionsCell(line.id)}
+        ${actionsCell(line.id, line.stub)}
       </tr>`;
       const detail = expanded ? `<tr class="bau-detail-row"><td colspan="${colspan}"><div class="bau-detail-grid">
         <div><b>Reasons</b>${esc(m.reasons) || '—'}</div>
@@ -4303,7 +4324,7 @@ function renderBauTable(){
       ${idCells}
       <td class="bau-num">${fmtPct(ytd)}</td><td>${bauAchPill(bauOverallAchievement(line))}</td>
       <td><div class="bau-strip">${bauMiniStrip(line)}</div></td>
-      ${actionsCell(line.id)}
+      ${actionsCell(line.id, line.stub)}
     </tr>`;
   }).join('');
 
@@ -4456,6 +4477,8 @@ function saveAnnotFieldsToModel(){
   m.submitInvoice = document.getElementById('bau_f_invoice').value.trim();
 }
 function openBauModal(id){
+  const stubPid = id && String(id).startsWith('stub_') ? String(id).slice(5) : null;
+  if(stubPid) id = null;
   if(!id && !isAdmin) return;
   editingBauId = id || null;
   const line = id ? bauData.find(l => l.id === id) : null;
@@ -4470,14 +4493,16 @@ function openBauModal(id){
   document.getElementById('bau_f_brand').value = line ? line.brand : '';
   document.getElementById('bau_f_scope').value = line ? line.scopeOfWork : '';
   document.getElementById('bau_f_activity').value = line ? line.detailActivity : '';
-  const projSel = document.getElementById('bau_f_proj'), projVal = line ? line.projId : (bauFilterProj || '');
-  projSel.innerHTML = '<option value="">Tidak terkait</option>' + data.map(it => `<option value="${esc(it.id)}">${esc(it.name)}${it.bu ? ' · ' + esc(it.bu) : ''}</option>`).join('');
+  const projSel = document.getElementById('bau_f_proj'), projVal = line ? line.projId : (stubPid || bauFilterProj || '');
+  projSel.innerHTML = '<option value="">Tidak terkait</option>' + data.filter(it => isStarted(it) || it.id === projVal).map(it => `<option value="${esc(it.id)}">${esc(it.name)}${it.bu ? ' · ' + esc(it.bu) : ''}${isStarted(it) ? '' : ' (belum mulai)'}</option>`).join('');
   projSel.value = data.some(it => it.id === projVal) ? projVal : '';
   const metricSel = document.getElementById('bau_f_metric');
   const isPreset = line && METRIC_PRESETS.includes(line.metric);
   metricSel.value = line ? (isPreset ? line.metric : 'Lainnya') : 'Budget';
   document.getElementById('bau_f_metric_custom').value = (line && !isPreset) ? line.metric : '';
   document.getElementById('bauMetricCustomWrap').style.display = metricSel.value === 'Lainnya' ? 'block' : 'none';
+  if(!line && stubPid){ metricSel.value = 'Lainnya'; document.getElementById('bau_f_metric_custom').value = 'Deliverable'; document.getElementById('bauMetricCustomWrap').style.display = 'block'; }
+  bauApplyProjLock();
   applyBauDirUI(line ? line.metricDirection : (METRIC_DIRECTION_DEFAULT[metricSel.value] || 'higher'));
   renderBauMonthGrid();
   renderBauAnnotMonthSel();
@@ -4559,7 +4584,7 @@ document.getElementById('dvSave').onclick = () => {
   const num = v => { v = String(v).trim().replace(',', '.'); return v !== '' && isFinite(+v) ? +v : null; };
   let ln = dvLine(it.id, label);
   if(!ln){
-    ln = migrateBauLine({id: uid(), businessUnit: it.bu || '-', brand: it.bu || '', scopeOfWork: it.service || '', detailActivity: it.name, metric: label, metricDirection: 'higher', projId: it.id, bauYear: dvYear()});
+    ln = migrateBauLine({id: uid(), businessUnit: it.bu || '-', brand: it.name, scopeOfWork: it.service || '', detailActivity: '', metric: label, metricDirection: 'higher', projId: it.id, bauYear: dvYear()});
     bauData.push(ln);
   }
   const mo = ln.months[mk];
@@ -4584,6 +4609,7 @@ document.getElementById('bauModalDelete').onclick = () => {
 document.getElementById('bauModalSave').onclick = () => {
   if(document.getElementById('bauModalSave').classList.contains('busy')) return;
   if(!isAdmin) return;
+  if(!editingBauId && !document.getElementById('bau_f_proj').value){ toast('Pilih project dulu. Target diambil dari project yang sudah mulai.'); document.getElementById('bau_f_proj').focus(); return; }
   const bu = document.getElementById('bau_f_bu').value.trim();
   if(!bu){ document.getElementById('bau_f_bu').focus(); toast('Business unit wajib diisi'); return; }
   saveAnnotFieldsToModel();
