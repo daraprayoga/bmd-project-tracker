@@ -379,6 +379,7 @@
   .dv-empty,.dv-more{font-size:11.5px;color:var(--ink-faint);margin-top:6px;}
   body.compact .dv{display:none;}
   .bau-row-actions.stub .danger{display:none;}
+  .bau-per{font-size:11px;color:var(--ink-faint);margin-top:4px;white-space:nowrap;}
   .bau-empty{color:var(--ink-faint);font-style:italic;}
   .bau-projtag{font-size:11px;color:var(--accent-text);margin-top:2px;font-weight:600;}
   .bau-projclr{border:0;background:none;color:var(--accent-text);font:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;}
@@ -1313,11 +1314,11 @@
       <div class="statbar" id="bauStatBar"></div>
 
       <div class="bau-legend" id="bauLegend">
-        <span class="lg-title">Keterangan Jan–Des</span>
+        <span class="lg-title">Keterangan periode</span>
         <span class="lg-item"><span class="lg-dot achieve"></span>Achieve (capaian ≥ 100% target)</span>
         <span class="lg-item"><span class="lg-dot under"></span>Under Achieve (capaian &lt; 100% target)</span>
         <span class="lg-item"><span class="lg-dot"></span>Belum ada data (target/actual kosong)</span>
-        <span class="lg-note">1 batang = 1 bulan, tinggi = capaian, garis tipis = 100%, urut Jan sampai Des</span>
+        <span class="lg-note">1 batang = 1 bulan, tinggi = capaian, garis tipis = 100%, urut dari awal periode kerja sama project</span>
       </div>
 
       <div class="bau-table-wrap">
@@ -1607,7 +1608,7 @@
       <label for="dv_note">Note</label>
       <textarea id="dv_note" rows="3" placeholder="mis. 100 draft sudah dikirim, masih proses approval"></textarea>
     </div>
-    <div class="field-hint">Isi per bulan. Card menjumlahkan semua bulan, rincian lengkap ada di menu Target.</div>
+    <div class="field-hint">Isi per bulan dalam periode kerja sama project. Card menjumlahkan semua bulan, rincian lengkap ada di menu Target.</div>
     <div class="modal-actions">
       <button class="btn-secondary" id="dvOpenTarget" type="button">Buka di Target</button>
       <div style="display:flex;gap:8px;">
@@ -1675,7 +1676,7 @@
       <div class="field-hint">CPC otomatis "lower is better" (makin kecil cost makin bagus). Bisa di-override kalau perlu.</div>
     </div>
 
-    <div class="section-label">Target &amp; Actual per bulan (2026)</div>
+    <div class="section-label">Target &amp; Actual per bulan <span style="text-transform:none;font-weight:500;color:var(--ink-faint);">(sesuai periode kerja sama project)</span></div>
     <div style="overflow-x:auto;">
       <div id="bauMonthGridWrap"></div>
     </div>
@@ -1785,7 +1786,8 @@ const CMT_PATH = 'dmd-tracker/comments';
 const CFG_PIN_PATH = 'dmd-tracker/config/reviewPin';
 // Bump this (and the delivered filename) every time a new revision goes out,
 // so it's always clear which version is live on a given browser/device.
-const APP_VERSION = '0.55';
+const YM_RE = /^\d{4}-\d{2}$/;
+const APP_VERSION = '0.56';
 document.getElementById('appVersion').textContent = `BMD Project Tracker · v${APP_VERSION}`;
 let db = null, boardRef = null, cloudReady = false;
 const CLIENT_TAG = Math.random().toString(36).slice(2, 6);
@@ -2790,6 +2792,7 @@ document.getElementById('importFile').onchange = (e) => {
           isPaidMarketing: !!it.isPaidMarketing,
           serviceFeePct: it.isPaidMarketing ? (it.serviceFeePct != null ? Number(it.serviceFeePct) : 8) : null,
           pphPct: it.isPaidMarketing ? (it.pphPct != null ? Number(it.pphPct) : 2) : null,
+          pStart: YM_RE.test(it.pStart || '') ? it.pStart : '', pEnd: YM_RE.test(it.pEnd || '') ? it.pEnd : '',
           manhour: Math.max(0, Number(it.manhour) || 0),
           mhLines: Array.isArray(it.mhLines) ? it.mhLines.map(l => ({label: String(l.label || ''), cost: Math.max(0, +l.cost || 0)})) : [],
           metrics: Array.isArray(it.metrics)
@@ -3495,6 +3498,23 @@ function emptyBauMonths(){
 }
 // Mirrors migrateItem/migrateCatalogCategory: fills sane defaults for any
 // missing/malformed field, applied on localStorage load and on Firebase data.
+function normBauMonth(m){
+  m = m || {};
+  return {
+    target: (m.target != null && m.target !== '' && isFinite(+m.target)) ? +m.target : null,
+    actual: (m.actual != null && m.actual !== '' && isFinite(+m.actual)) ? +m.actual : null,
+    reasons: String(m.reasons || ''),
+    improvementPlan: String(m.improvementPlan || ''),
+    linkToDocument: String(m.linkToDocument || ''),
+    lastWeekRemarks: String(m.lastWeekRemarks || ''),
+    notes: String(m.notes || ''),
+    bast: String(m.bast || ''),
+    submitInvoice: String(m.submitInvoice || '')
+  };
+}
+function bauMoHasData(m){
+  return !!m && (m.target != null || m.actual != null || ['reasons','improvementPlan','linkToDocument','lastWeekRemarks','notes','bast','submitInvoice'].some(k => String(m[k] || '').trim()));
+}
 function migrateBauLine(line){
   line = line || {};
   const out = {
@@ -3510,23 +3530,17 @@ function migrateBauLine(line){
     status: String(line.status || ''),
     projId: String(line.projId || ''),
     bauYear: line.bauYear || BAU_YEAR,
-    months: emptyBauMonths()
+    months: emptyBauMonths(),
+    pm: {}
   };
   const src = (line.months && typeof line.months === 'object') ? line.months : {};
-  MONTH_KEYS.forEach(mk => {
-    const m = src[mk] || {};
-    out.months[mk] = {
-      target: (m.target != null && m.target !== '' && isFinite(+m.target)) ? +m.target : null,
-      actual: (m.actual != null && m.actual !== '' && isFinite(+m.actual)) ? +m.actual : null,
-      reasons: String(m.reasons || ''),
-      improvementPlan: String(m.improvementPlan || ''),
-      linkToDocument: String(m.linkToDocument || ''),
-      lastWeekRemarks: String(m.lastWeekRemarks || ''),
-      notes: String(m.notes || ''),
-      bast: String(m.bast || ''),
-      submitInvoice: String(m.submitInvoice || '')
-    };
-  });
+  MONTH_KEYS.forEach(mk => { out.months[mk] = normBauMonth(src[mk]); });
+  // Baris yang tertaut ke project menyimpan bulan sesuai periode project (kunci YYYY-MM), bisa lintas tahun.
+  if(line.pm && typeof line.pm === 'object'){
+    Object.keys(line.pm).forEach(k => { if(YM_RE.test(k)) out.pm[k] = normBauMonth(line.pm[k]); });
+  }else if(out.projId){
+    MONTH_KEYS.forEach((mk, i) => { if(bauMoHasData(out.months[mk])) out.pm[out.bauYear + '-' + String(i + 1).padStart(2, '0')] = JSON.parse(JSON.stringify(out.months[mk])); });
+  }
   return out;
 }
 function loadBau(){
@@ -3546,9 +3560,40 @@ function saveBau(d){
 }
 let bauData = loadBau();
 
+
+/* ---- v0.56 periode per project ---- */
+function ymLabel(ym){ return MONTH_LABEL_ID[MONTH_KEYS[+ym.slice(5) - 1]] + ' ' + ym.slice(0, 4); }
+function ymShort(ym){ return MONTH_LABEL_ID[MONTH_KEYS[+ym.slice(5) - 1]] + ' ' + ym.slice(2, 4); }
+function ymRange(s, e){
+  const out = []; let [y, m] = s.split('-').map(Number); const [ey, em] = e.split('-').map(Number);
+  while((y < ey || (y === ey && m <= em)) && out.length < 60){ out.push(y + '-' + String(m).padStart(2, '0')); m++; if(m > 12){ m = 1; y++; } }
+  return out;
+}
+function bauProjPeriod(p){
+  let s = YM_RE.test(p.pStart || '') ? p.pStart : '', e = YM_RE.test(p.pEnd || '') ? p.pEnd : '';
+  if(!(s && e) && p.csId){ try{ const a = csApi(), sm = a && a.summary(p.csId); if(sm){ s = YM_RE.test(sm.start || '') ? sm.start : s; e = YM_RE.test(sm.end || sm.start || '') ? (sm.end || sm.start) : e; } }catch(err){} }
+  if(!e) e = String(p.target || '').slice(0, 7);
+  if(!YM_RE.test(e)) e = todayStr().slice(0, 7);
+  if(!YM_RE.test(s)) s = e;
+  if(s > e) s = e;
+  return ymRange(s, e);
+}
+function bauSlots(line){
+  if(line.projId){
+    const p = data.find(d => d.id === line.projId), set = new Set(p ? bauProjPeriod(p) : []);
+    Object.keys(line.pm || {}).forEach(k => { if(bauMoHasData(line.pm[k])) set.add(k); });
+    return Array.from(set).sort();
+  }
+  return MONTH_KEYS.map((mk, i) => (line.bauYear || BAU_YEAR) + '-' + String(i + 1).padStart(2, '0'));
+}
+function bauMo(line, ym){
+  if(line.projId) return (line.pm && line.pm[ym]) || null;
+  return +ym.slice(0, 4) === (line.bauYear || BAU_YEAR) ? line.months[MONTH_KEYS[+ym.slice(5) - 1]] : null;
+}
+
 /* ---- percentage / achievement formulas ---- */
 function computeMonthPct(line, mk){
-  const m = line.months[mk];
+  const m = bauMo(line, mk);
   if(!m) return null;
   const t = m.target, a = m.actual;
   if(t == null || a == null) return null;
@@ -3569,7 +3614,7 @@ function achievementFromPct(pct){
 // our own, clearly-labeled figure: a YTD average of the monthly % Progress values
 // across every month that has both target and actual filled in.
 function bauYtdAvg(line){
-  const vals = MONTH_KEYS.map(mk => computeMonthPct(line, mk)).filter(v => v != null && isFinite(v));
+  const vals = bauSlots(line).map(mk => computeMonthPct(line, mk)).filter(v => v != null && isFinite(v));
   if(!vals.length) return null;
   return vals.reduce((a,b) => a+b, 0) / vals.length;
 }
@@ -3680,12 +3725,12 @@ function exportBauCsv(){
   const header = ['Document Number (PO/SPK/CL)','Business Unit','Brand','Status','Scope of Work','Detail Activity','Metrics','Month','Target','Actual','Percentage Progress','Achievement status','Reasons','Improvement Plan','Link to Document','Last Week Remarks','Notes','BAST','Submit Invoice'];
   const rows = [header];
   bauData.forEach(line => {
-    MONTH_KEYS.forEach(mk => {
-      const m = line.months[mk];
+    bauSlots(line).forEach(mk => {
+      const m = bauMo(line, mk) || emptyBauMonth();
       const pct = computeMonthPct(line, mk);
       rows.push([
         line.documentNumber || '', line.businessUnit || '', line.brand || '', line.status || '',
-        line.scopeOfWork || '', line.detailActivity || '', line.metric || '', `${MONTH_LABEL_EN[mk]} ${line.bauYear || BAU_YEAR}`,
+        line.scopeOfWork || '', line.detailActivity || '', line.metric || '', `${MONTH_LABEL_EN[MONTH_KEYS[+mk.slice(5) - 1]]} ${mk.slice(0, 4)}`,
         m.target != null ? m.target : '', m.actual != null ? m.actual : '',
         pct != null ? pct.toFixed(0) + '%' : '', achievementFromPct(pct) || '',
         m.reasons || '', m.improvementPlan || '', m.linkToDocument || '', m.lastWeekRemarks || '', m.notes || '', m.bast || '', m.submitInvoice || ''
@@ -4134,6 +4179,7 @@ function applyBauFilters(list){
   const q = bauSearchTerm.trim().toLowerCase();
   return list.filter(l => {
     if(bauFilterProj && l.projId !== bauFilterProj) return false;
+    if(bauFilterMonth !== 'all' && !bauSlots(l).includes(bauFilterMonth)) return false;
     if(bauFilterBU && l.businessUnit !== bauFilterBU) return false;
     if(bauFilterBrand && l.brand !== bauFilterBrand) return false;
     if(bauFilterScope && l.scopeOfWork !== bauFilterScope) return false;
@@ -4161,10 +4207,13 @@ function bauApplyProjLock(){
   if(p){ f[0].value = p.bu || '-'; f[1].value = p.name; f[2].value = p.service || ''; }
   f.forEach(el => { el.disabled = !!p; });
 }
-document.getElementById('bau_f_proj').addEventListener('change', bauApplyProjLock);
+document.getElementById('bau_f_proj').addEventListener('change', () => {
+  saveAnnotFieldsToModel(); bauApplyProjLock(); renderBauMonthGrid(); renderBauAnnotMonthSel(); loadAnnotFieldsFromModel();
+});
 
 function renderBauFilters(){
-  const monthDefs = [{k:'all', t:'Semua bulan'}].concat(MONTH_KEYS.map(mk => ({k:mk, t:MONTH_LABEL_ID[mk]})));
+  const ymSet = new Set(); bauView().rows.forEach(l => bauSlots(l).forEach(k => ymSet.add(k)));
+  const monthDefs = [{k:'all', t:'Semua bulan'}].concat(Array.from(ymSet).sort().map(k => ({k, t:ymLabel(k)})));
   const mf = document.getElementById('bauMonthFilter');
   mf.innerHTML = monthDefs.map(d => `<button class="filter-item ${bauFilterMonth === d.k ? 'active' : ''}" data-month="${d.k}"><span class="lbl">${d.t}</span></button>`).join('');
   mf.querySelectorAll('[data-month]').forEach(el => { el.onclick = () => { bauFilterMonth = el.dataset.month; renderBauAll(); }; });
@@ -4223,7 +4272,7 @@ function renderBauStatBar(){
     {l:'Total baris', n: v.length},
     {l:'Achieve', n: achieve},
     {l:'Under Achieve', n: under},
-    {l: bauFilterMonth === 'all' ? 'Rata-rata YTD' : `Rata-rata ${MONTH_LABEL_ID[bauFilterMonth]}`, n: fmtPct(avgPct)}
+    {l: bauFilterMonth === 'all' ? 'Rata-rata periode' : `Rata-rata ${ymLabel(bauFilterMonth)}`, n: fmtPct(avgPct)}
   ];
   document.getElementById('bauStatBar').innerHTML = segs.map(s => `
     <div class="stat-seg">
@@ -4237,7 +4286,7 @@ function renderBauStatBar(){
   const pj = bauFilterProj ? data.find(d => d.id === bauFilterProj) : null;
   document.getElementById('bauTopSub').innerHTML =
     (pj ? `<b>Project: ${esc(pj.name)}</b> <button type="button" class="bau-projclr" id="bauProjClr">Lihat semua</button> · ` : '') +
-    esc((parts.length ? parts.join(' · ') + ' — ' : '') + `${v.length} dari ${bauView().rows.length} baris · ${bauFilterMonth === 'all' ? 'Semua bulan' : MONTH_LABEL_ID[bauFilterMonth]}`)
+    esc((parts.length ? parts.join(' · ') + ' — ' : '') + `${v.length} dari ${bauView().rows.length} baris · ${bauFilterMonth === 'all' ? 'Semua bulan' : ymLabel(bauFilterMonth)}`)
     + (bauView().legacyCount ? ` · <button type="button" class="bau-projclr" id="bauLegacyBtn">${bauShowLegacy ? 'Sembunyikan' : 'Tampilkan'} ${bauView().legacyCount} baris lama</button>` : '');
   const lb = document.getElementById('bauLegacyBtn');
   if(lb) lb.onclick = () => { bauShowLegacy = !bauShowLegacy; renderBauAll(); };
@@ -4245,15 +4294,15 @@ function renderBauStatBar(){
   if(pc) pc.onclick = () => { bauFilterProj = null; renderBauAll(); };
 }
 function bauMiniStrip(line){
-  return MONTH_KEYS.map(mk => {
-    const ach = achievementFromPct(computeMonthPct(line, mk));
+  return bauSlots(line).map((mk, i) => {
+    const pct = computeMonthPct(line, mk), ach = achievementFromPct(pct);
     const cls = ach === 'Achieve' ? 'achieve' : ach === 'Under Achieve' ? 'under' : '';
-    const pct = computeMonthPct(line, mk);
-    const tip = pct == null ? `${MONTH_LABEL_ID[mk]}: belum ada data` : `${MONTH_LABEL_ID[mk]}: ${ach} (${Math.round(pct)}%)`;
+    const tip = pct == null ? `${ymLabel(mk)}: belum ada data` : `${ymLabel(mk)}: ${ach} (${Math.round(pct)}%)`;
     const h = pct == null ? 0 : Math.max(14, Math.min(pct, 150) / 150 * 100);
-    return `<span class="${cls}" style="--i:${MONTH_KEYS.indexOf(mk)};${h ? `height:${h.toFixed(1)}%` : ''}" title="${tip}"></span>`;
+    return `<span class="${cls}" style="--i:${i};${h ? `height:${h.toFixed(1)}%` : ''}" title="${tip}"></span>`;
   }).join('');
 }
+function bauPeriodText(line){ const s = bauSlots(line); return s.length ? (s.length > 1 ? ymLabel(s[0]) + ' – ' + ymLabel(s[s.length - 1]) : ymLabel(s[0])) : ''; }
 function bauAchPill(ach){
   return ach === 'Achieve' ? '<span class="bau-pill achieve">Achieve</span>'
     : ach === 'Under Achieve' ? '<span class="bau-pill under">Under Achieve</span>'
@@ -4285,8 +4334,8 @@ function renderBauTable(){
 
   const showMonth = bauFilterMonth !== 'all';
   const head = showMonth
-    ? `<tr><th>Business Unit</th><th>Brand</th><th>Scope of Work</th><th>Detail Activity</th><th>Metric</th><th>Target</th><th>Actual</th><th>% Progress</th><th>Rata-rata YTD</th><th>Status</th><th></th>${isAdmin ? '<th></th>' : ''}</tr>`
-    : `<tr><th>Business Unit</th><th>Brand</th><th>Scope of Work</th><th>Detail Activity</th><th>Metric</th><th>Rata-rata YTD</th><th>Status</th><th>Jan&ndash;Des</th>${isAdmin ? '<th></th>' : ''}</tr>`;
+    ? `<tr><th>Business Unit</th><th>Brand</th><th>Scope of Work</th><th>Detail Activity</th><th>Metric</th><th>Target</th><th>Actual</th><th>% Progress</th><th>Rata-rata periode</th><th>Status</th><th></th>${isAdmin ? '<th></th>' : ''}</tr>`
+    : `<tr><th>Business Unit</th><th>Brand</th><th>Scope of Work</th><th>Detail Activity</th><th>Metric</th><th>Rata-rata periode</th><th>Status</th><th>Periode</th>${isAdmin ? '<th></th>' : ''}</tr>`;
   const colspan = showMonth ? (isAdmin ? 11 : 10) : (isAdmin ? 9 : 8);
 
   const actionsCell = (id, stub) => isAdmin ? `<td class="bau-row-actions${stub ? ' stub' : ''}">
@@ -4298,7 +4347,7 @@ function renderBauTable(){
     const ytd = bauYtdAvg(line);
     const idCells = `<td>${esc(line.businessUnit)}</td><td>${esc(line.brand)}</td><td>${esc(line.scopeOfWork)}</td><td>${esc(line.detailActivity)}</td><td>${line.stub ? '<span class="bau-empty">Belum ada target</span>' : esc(line.metric)}</td>`;
     if(showMonth){
-      const m = line.months[bauFilterMonth];
+      const m = bauMo(line, bauFilterMonth) || emptyBauMonth();
       const pct = computeMonthPct(line, bauFilterMonth);
       const ach = achievementFromPct(pct);
       const expanded = bauExpandedRows.has(line.id);
@@ -4323,7 +4372,7 @@ function renderBauTable(){
     return `<tr class="bau-row" data-bau-row="${line.id}">
       ${idCells}
       <td class="bau-num">${fmtPct(ytd)}</td><td>${bauAchPill(bauOverallAchievement(line))}</td>
-      <td><div class="bau-strip">${bauMiniStrip(line)}</div></td>
+      <td><div class="bau-strip">${bauMiniStrip(line)}</div><div class="bau-per">${esc(bauPeriodText(line))}</div></td>
       ${actionsCell(line.id, line.stub)}
     </tr>`;
   }).join('');
@@ -4431,22 +4480,44 @@ document.getElementById('bau_f_metric').onchange = (e) => {
   if(v !== 'Lainnya') applyBauDirUI(METRIC_DIRECTION_DEFAULT[v] || 'higher');
 };
 
+let bauModalYear = BAU_YEAR;
+function bmm(k){ return bauModalMonths[k] || (bauModalMonths[k] = emptyBauMonth()); }
+function bauMonthsToYm(line){
+  const o2 = {};
+  if(line.projId) Object.keys(line.pm || {}).forEach(k => { o2[k] = JSON.parse(JSON.stringify(line.pm[k])); });
+  else MONTH_KEYS.forEach((mk, i) => { o2[(line.bauYear || BAU_YEAR) + '-' + String(i + 1).padStart(2, '0')] = JSON.parse(JSON.stringify(line.months[mk])); });
+  return o2;
+}
+function bauModalSlots(){
+  const p = data.find(d => d.id === document.getElementById('bau_f_proj').value);
+  if(p){
+    const set = new Set(bauProjPeriod(p));
+    Object.keys(bauModalMonths).forEach(k => { if(bauMoHasData(bauModalMonths[k])) set.add(k); });
+    return Array.from(set).sort();
+  }
+  return MONTH_KEYS.map((mk, i) => bauModalYear + '-' + String(i + 1).padStart(2, '0'));
+}
+function bauModalLabel(k, withYear){ return withYear ? ymShort(k) : MONTH_LABEL_ID[MONTH_KEYS[+k.slice(5) - 1]]; }
+function bauEnsureAnnot(slots){
+  if(slots.includes(bauAnnotMonth)) return;
+  const now = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0');
+  bauAnnotMonth = slots.includes(now) ? now : (slots[0] || '');
+}
 function renderBauMonthGrid(){
-  const wrap = document.getElementById('bauMonthGridWrap');
-  const header = `<div class="bau-month-grid"><div class="bmg-lab"></div>${MONTH_KEYS.map(mk => `<div class="bmg-lab" style="text-align:center;">${MONTH_LABEL_ID[mk]}</div>`).join('')}</div>`;
-  const targetRow = `<div class="bau-month-grid"><div class="bmg-lab">Target</div>${MONTH_KEYS.map(mk => `<input type="number" step="any" data-bau-target="${mk}" value="${bauModalMonths[mk].target != null ? bauModalMonths[mk].target : ''}">`).join('')}</div>`;
-  const actualRow = `<div class="bau-month-grid"><div class="bmg-lab">Actual</div>${MONTH_KEYS.map(mk => `<input type="number" step="any" data-bau-actual="${mk}" value="${bauModalMonths[mk].actual != null ? bauModalMonths[mk].actual : ''}">`).join('')}</div>`;
-  wrap.innerHTML = header + targetRow + actualRow;
-  wrap.querySelectorAll('[data-bau-target]').forEach(inp => {
-    inp.oninput = () => { bauModalMonths[inp.dataset.bauTarget].target = inp.value === '' ? null : Number(inp.value); };
-  });
-  wrap.querySelectorAll('[data-bau-actual]').forEach(inp => {
-    inp.oninput = () => { bauModalMonths[inp.dataset.bauActual].actual = inp.value === '' ? null : Number(inp.value); };
-  });
+  const wrap = document.getElementById('bauMonthGridWrap'), slots = bauModalSlots(), wy = !!document.getElementById('bau_f_proj').value;
+  bauEnsureAnnot(slots);
+  const cols = `style="grid-template-columns:80px repeat(${slots.length},minmax(46px,1fr));min-width:${80 + slots.length * 50}px;"`;
+  const header = `<div class="bau-month-grid" ${cols}><div class="bmg-lab"></div>${slots.map(k => `<div class="bmg-lab" style="text-align:center;">${bauModalLabel(k, wy)}</div>`).join('')}</div>`;
+  const row = (lab, f) => `<div class="bau-month-grid" ${cols}><div class="bmg-lab">${lab}</div>${slots.map(k => { const v = (bauModalMonths[k] || {})[f]; return `<input type="number" step="any" data-bau-${f}="${k}" value="${v != null ? v : ''}">`; }).join('')}</div>`;
+  wrap.innerHTML = header + row('Target', 'target') + row('Actual', 'actual');
+  ['target', 'actual'].forEach(f => wrap.querySelectorAll(`[data-bau-${f}]`).forEach(inp => {
+    inp.oninput = () => { bmm(inp.dataset['bau' + f[0].toUpperCase() + f.slice(1)])[f] = inp.value === '' ? null : Number(inp.value); };
+  }));
 }
 function renderBauAnnotMonthSel(){
-  const wrap = document.getElementById('bauAnnotMonthSel');
-  wrap.innerHTML = MONTH_KEYS.map(mk => `<button type="button" class="${bauAnnotMonth === mk ? 'active' : ''}" data-annot-month="${mk}">${MONTH_LABEL_ID[mk]}</button>`).join('');
+  const wrap = document.getElementById('bauAnnotMonthSel'), slots = bauModalSlots(), wy = !!document.getElementById('bau_f_proj').value;
+  bauEnsureAnnot(slots);
+  wrap.innerHTML = slots.map(k => `<button type="button" class="${bauAnnotMonth === k ? 'active' : ''}" data-annot-month="${k}">${bauModalLabel(k, wy)}</button>`).join('');
   wrap.querySelectorAll('[data-annot-month]').forEach(b => {
     b.onclick = () => {
       saveAnnotFieldsToModel();
@@ -4457,7 +4528,7 @@ function renderBauAnnotMonthSel(){
   });
 }
 function loadAnnotFieldsFromModel(){
-  const m = bauModalMonths[bauAnnotMonth];
+  const m = bauAnnotMonth ? bmm(bauAnnotMonth) : emptyBauMonth();
   document.getElementById('bau_f_reasons').value = m.reasons || '';
   document.getElementById('bau_f_improvement').value = m.improvementPlan || '';
   document.getElementById('bau_f_link').value = m.linkToDocument || '';
@@ -4467,7 +4538,8 @@ function loadAnnotFieldsFromModel(){
   document.getElementById('bau_f_invoice').value = m.submitInvoice || '';
 }
 function saveAnnotFieldsToModel(){
-  const m = bauModalMonths[bauAnnotMonth];
+  if(!bauAnnotMonth) return;
+  const m = bmm(bauAnnotMonth);
   m.reasons = document.getElementById('bau_f_reasons').value.trim();
   m.improvementPlan = document.getElementById('bau_f_improvement').value.trim();
   m.linkToDocument = document.getElementById('bau_f_link').value.trim();
@@ -4482,8 +4554,9 @@ function openBauModal(id){
   if(!id && !isAdmin) return;
   editingBauId = id || null;
   const line = id ? bauData.find(l => l.id === id) : null;
-  bauModalMonths = line ? JSON.parse(JSON.stringify(line.months)) : emptyBauMonths();
-  bauAnnotMonth = 'jan';
+  bauModalMonths = line ? bauMonthsToYm(line) : {};
+  bauModalYear = line ? (line.bauYear || BAU_YEAR) : BAU_YEAR;
+  bauAnnotMonth = '';
   const modalEl = document.getElementById('bauModal');
   modalEl.classList.toggle('readonly', !isAdmin);
   document.getElementById('bauModalReadonlyHint').style.display = isAdmin ? 'none' : 'block';
@@ -4519,12 +4592,12 @@ function dvGroups(item){
   bauData.filter(l => l.projId === item.id).forEach(l => {
     const key = l.metric || 'Deliverable';
     const g = by.get(key) || {label:key, target:0, actual:0, has:false, note:'', noteAt:''};
-    MONTH_KEYS.forEach((mk, i) => {
-      const mo = l.months[mk]; if(!mo) return;
+    bauSlots(l).forEach(ym => {
+      const mo = bauMo(l, ym); if(!mo) return;
       if(mo.target != null){ g.target += +mo.target; g.has = true; }
       if(mo.actual != null){ g.actual += +mo.actual; g.has = true; }
       const nt = String(mo.notes || '').trim();
-      if(nt){ const at = (l.bauYear || BAU_YEAR) + '-' + String(i + 1).padStart(2, '0'); if(at >= g.noteAt){ g.noteAt = at; g.note = nt; } }
+      if(nt){ if(ym >= g.noteAt){ g.noteAt = ym; g.note = nt; } }
     });
     by.set(key, g);
   });
@@ -4548,10 +4621,10 @@ function goTargetFor(id){ bauFilterProj = id; switchView('bau'); }
 let dvItemId = null;
 const dvOverlay = document.getElementById('dvOverlay');
 function dvYear(){ return new Date().getFullYear(); }
-function dvLine(id, label){ return bauData.find(l => l.projId === id && (l.metric || 'Deliverable') === label && (l.bauYear || BAU_YEAR) === dvYear()); }
+function dvLine(id, label){ return bauData.find(l => l.projId === id && (l.metric || 'Deliverable') === label); }
 function dvRefill(){
   const label = document.getElementById('dv_label').value.trim() || 'Deliverable', mk = document.getElementById('dv_month').value;
-  const ln = dvLine(dvItemId, label), mo = ln && ln.months[mk];
+  const ln = dvLine(dvItemId, label), mo = ln && bauMo(ln, mk);
   document.getElementById('dv_target').value = mo && mo.target != null ? mo.target : '';
   document.getElementById('dv_actual').value = mo && mo.actual != null ? mo.actual : '';
   document.getElementById('dv_note').value = mo ? mo.notes : '';
@@ -4564,9 +4637,9 @@ function openDvModal(id){
   document.getElementById('dvSub').textContent = it.name + (it.bu ? ' · ' + it.bu : '');
   document.getElementById('dv_label').value = labels[0] || '';
   document.getElementById('dvLabels').innerHTML = labels.map(l => `<option value="${esc(l)}">`).join('');
-  const nowMk = MONTH_KEYS[new Date().getMonth()];
-  document.getElementById('dv_month').innerHTML = MONTH_KEYS.map(k => `<option value="${k}">${MONTH_LABEL_ID[k]} ${dvYear()}</option>`).join('');
-  document.getElementById('dv_month').value = nowMk;
+  const per = bauProjPeriod(it), nowYm = todayStr().slice(0, 7);
+  document.getElementById('dv_month').innerHTML = per.map(k => `<option value="${k}">${ymLabel(k)}</option>`).join('');
+  document.getElementById('dv_month').value = per.includes(nowYm) ? nowYm : (nowYm < per[0] ? per[0] : per[per.length - 1]);
   dvRefill();
   dvOverlay.classList.add('show');
   setTimeout(() => document.getElementById(labels.length ? 'dv_actual' : 'dv_label').focus(), 50);
@@ -4584,10 +4657,10 @@ document.getElementById('dvSave').onclick = () => {
   const num = v => { v = String(v).trim().replace(',', '.'); return v !== '' && isFinite(+v) ? +v : null; };
   let ln = dvLine(it.id, label);
   if(!ln){
-    ln = migrateBauLine({id: uid(), businessUnit: it.bu || '-', brand: it.name, scopeOfWork: it.service || '', detailActivity: '', metric: label, metricDirection: 'higher', projId: it.id, bauYear: dvYear()});
+    ln = migrateBauLine({id: uid(), businessUnit: it.bu || '-', brand: it.name, scopeOfWork: it.service || '', detailActivity: '', metric: label, metricDirection: 'higher', projId: it.id, bauYear: dvYear(), pm: {}});
     bauData.push(ln);
   }
-  const mo = ln.months[mk];
+  const mo = ln.pm[mk] || (ln.pm[mk] = emptyBauMonth());
   mo.target = num(document.getElementById('dv_target').value);
   mo.actual = num(document.getElementById('dv_actual').value);
   mo.notes = document.getElementById('dv_note').value.trim();
@@ -4615,14 +4688,17 @@ document.getElementById('bauModalSave').onclick = () => {
   saveAnnotFieldsToModel();
   const metricSelVal = document.getElementById('bau_f_metric').value;
   const metric = metricSelVal === 'Lainnya' ? (document.getElementById('bau_f_metric_custom').value.trim() || 'Lainnya') : metricSelVal;
+  const pjv = document.getElementById('bau_f_proj').value, exLine = editingBauId ? bauData.find(l => l.id === editingBauId) : null, monthsOut = emptyBauMonths();
+  if(pjv){ if(exLine) MONTH_KEYS.forEach(mk => { monthsOut[mk] = exLine.months[mk]; }); }
+  else MONTH_KEYS.forEach((mk, i) => { const k = bauModalYear + '-' + String(i + 1).padStart(2, '0'); if(bauModalMonths[k]) monthsOut[mk] = bauModalMonths[k]; });
   const payload = {
     businessUnit: bu,
     brand: document.getElementById('bau_f_brand').value.trim(),
     scopeOfWork: document.getElementById('bau_f_scope').value.trim(),
     detailActivity: document.getElementById('bau_f_activity').value.trim(),
     metric, metricDirection: bauModalDir,
-    projId: document.getElementById('bau_f_proj').value,
-    months: bauModalMonths
+    projId: pjv,
+    months: monthsOut, pm: pjv ? bauModalMonths : {}
   };
   if(editingBauId){
     Object.assign(bauData.find(l => l.id === editingBauId), payload);
@@ -4751,7 +4827,7 @@ function csPlan(sm){
 }
 function csFields(sm, plan){
   const mhLines = sm.mh.map(l => ({label: l.label, cost: Math.max(0, Math.round(l.cost))}));
-  return {revenue: Math.max(0, Math.round(sm.sales)), cor: Math.max(0, Math.round(sm.ext)), manhour: mhLines.reduce((t, l) => t + l.cost, 0), mhLines, assignments: plan.assignments, internalProj: !!sm.internal};
+  return {revenue: Math.max(0, Math.round(sm.sales)), cor: Math.max(0, Math.round(sm.ext)), manhour: mhLines.reduce((t, l) => t + l.cost, 0), mhLines, assignments: plan.assignments, internalProj: !!sm.internal, pStart: YM_RE.test(sm.start || '') ? sm.start : '', pEnd: YM_RE.test(sm.end || sm.start || '') ? (sm.end || sm.start) : ''};
 }
 function csCommitTeam(plan){ if(plan.fresh.length){ teamState.members = teamState.members.concat(plan.fresh); saveTeam(); } }
 function csEndDate(sm){
@@ -5131,7 +5207,7 @@ function csResyncLinked(announce){
     if(!it.csId || it.isPaidMarketing) return;
     const sm = a.summary(it.csId); if(!sm) return;
     const plan = csPlan(sm), f = csFields(sm, plan);
-    const pick = o => csSig({internalProj:!!o.internalProj, revenue:Math.round(+o.revenue || 0), cor:Math.round(+o.cor || 0), manhour:Math.round(+o.manhour || 0), mhLines:(o.mhLines || []).map(l => ({label:l.label, cost:Math.round(+l.cost || 0)})), assignments:(o.assignments || []).map(a => ({memberId:a.memberId, hours:+a.hours || 0, unit:a.unit}))});
+    const pick = o => csSig({internalProj:!!o.internalProj, revenue:Math.round(+o.revenue || 0), cor:Math.round(+o.cor || 0), manhour:Math.round(+o.manhour || 0), pStart:o.pStart || '', pEnd:o.pEnd || '', mhLines:(o.mhLines || []).map(l => ({label:l.label, cost:Math.round(+l.cost || 0)})), assignments:(o.assignments || []).map(a => ({memberId:a.memberId, hours:+a.hours || 0, unit:a.unit}))});
     if(pick(it) === pick(f)) return;
     csCommitTeam(plan); Object.assign(it, f); changed++;
   });
