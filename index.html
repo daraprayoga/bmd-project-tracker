@@ -1783,7 +1783,7 @@ const CMT_PATH = 'dmd-tracker/comments';
 const CFG_PIN_PATH = 'dmd-tracker/config/reviewPin';
 // Bump this (and the delivered filename) every time a new revision goes out,
 // so it's always clear which version is live on a given browser/device.
-const APP_VERSION = '0.53';
+const APP_VERSION = '0.54';
 document.getElementById('appVersion').textContent = `BMD Project Tracker · v${APP_VERSION}`;
 let db = null, boardRef = null, cloudReady = false;
 const CLIENT_TAG = Math.random().toString(36).slice(2, 6);
@@ -3222,7 +3222,7 @@ function openModal(id){
   document.getElementById('f_progress').value = it ? it.progress : 0;
   document.getElementById('f_progress_label').textContent = it ? it.progress : 0;
   renderProgressRows(it ? it.progressTargets : []);
-  applyProgressUI(it && it.progressMode === 'qty' ? 'qty' : 'manual');
+  applyProgressUI(it ? (it.progressMode === 'qty' ? 'qty' : 'manual') : 'qty');
   document.getElementById('f_revenue').value  = it ? it.revenue : '';
   document.getElementById('f_cor').value      = it ? it.cor : '';
   document.getElementById('f_manhour').value  = it ? it.manhour : '';
@@ -4749,7 +4749,7 @@ function csToBoard(pid){
       csCommitTeam(plan);
       if(it) Object.assign(it, f, {csId: pid});
       else data.push({id: uid(), name: [sm.client, sm.name].filter(Boolean).join(' | ') || 'Project baru', bu: sm.client || 'Lainnya', service: sm.func || 'Lainnya', pic: '-',
-        type: 'onetime', target: csEndDate(sm), progressMode: 'manual', progressTargets: [], progress: 0, started: false, isPaidMarketing: false, serviceFeePct: null, pphPct: null,
+        type: 'onetime', target: csEndDate(sm), progressMode: 'qty', progressTargets: [], progress: 0, started: false, isPaidMarketing: false, serviceFeePct: null, pphPct: null,
         metrics: [], todosSeeded: true, todosV3: true, todos: ensureDefaultTodos([]), csId: pid, ...f});
       save(data); renderAll();
       const ap = csApi(); if(ap) ap.refreshLink();
