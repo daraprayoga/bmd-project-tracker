@@ -1073,7 +1073,8 @@
   body.is-scrolling .card, body.is-scrolling .card *{pointer-events:none !important;}
   body.is-scrolling .card{transition:none !important;}
   #costView{display:none;flex-direction:column;flex:1;min-width:0;min-height:0;}
-  #costFrame{flex:1;width:100%;min-height:0;border:0;background:transparent;display:block;}
+  #costFrame{flex:1;width:100%;min-height:0;border:0;background:transparent;display:block;border-radius:20px;}
+  #costView{border-radius:20px;overflow:hidden;}
   .cs-link-row{display:flex;gap:8px;align-items:center;}
   .cs-link-row select{flex:1;min-width:0;}
   .cs-link-row .btn-secondary{flex-shrink:0;padding:9px 13px;}
@@ -1928,7 +1929,7 @@ const CFG_PIN_PATH = 'dmd-tracker/config/reviewPin';
 // Bump this (and the delivered filename) every time a new revision goes out,
 // so it's always clear which version is live on a given browser/device.
 const YM_RE = /^\d{4}-\d{2}$/;
-const APP_VERSION = '0.81';
+const APP_VERSION = '0.82';
 document.getElementById('appVersion').textContent = `BMD Project Tracker · v${APP_VERSION}`;
 let db = null, boardRef = null, cloudReady = false;
 const CLIENT_TAG = Math.random().toString(36).slice(2, 6);
